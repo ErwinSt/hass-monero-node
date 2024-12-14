@@ -5,7 +5,6 @@ from homeassistant.const import PERCENTAGE, LENGTH_METERS, CURRENCY_DOLLAR
 from homeassistant.helpers.update_coordinator import CoordinatorEntity, DataUpdateCoordinator
 from datetime import timedelta
 import logging
-import requests
 
 from .const import DOMAIN, CONF_LOCAL_API, CONF_GLOBAL_API, CONF_COIN_API
 
@@ -52,10 +51,17 @@ class MoneroNodeCoordinator(DataUpdateCoordinator):
         """Fetch data from APIs."""
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.get(self.local_api) as response:
-                    local_data = await response.json()
-            global_data = requests.get(self.global_api).json()
-            coin_data = requests.get(self.coin_api).json()
+                # Fetch local API data
+                async with session.get(self.local_api) as local_response:
+                    local_data = await local_response.json()
+
+                # Fetch global API data
+                async with session.get(self.global_api) as global_response:
+                    global_data = await global_response.json()
+
+                # Fetch coin API data
+                async with session.get(self.coin_api) as coin_response:
+                    coin_data = await coin_response.json()
 
             return {
                 "local_height": local_data.get("height"),
