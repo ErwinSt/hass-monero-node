@@ -47,30 +47,48 @@ class MoneroNodeCoordinator(DataUpdateCoordinator):
         self.global_api = global_api
         self.coin_api = coin_api
 
-    async def _async_update_data(self):
-        """Fetch data from APIs."""
-        try:
-            async with aiohttp.ClientSession() as session:
-                # Fetch local API data
-                async with session.get(self.local_api) as local_response:
+async def _async_update_data(self):
+    """Fetch data from APIs."""
+    try:
+        async with aiohttp.ClientSession() as session:
+            # Fetch local API data
+            async with session.get(self.local_api) as local_response:
+                if local_response.headers.get("Content-Type") == "application/json":
                     local_data = await local_response.json()
+                else:
+                    _LOGGER.error(f"Expected JSON, but got {local_response.headers.get('Content-Type')}")
+                    local_data = {}
 
-                # Fetch global API data
-                async with session.get(self.global_api) as global_response:
+            # Fetch global API data
+            async with session.get(self.global_api) as global_response:
+                if global_response.headers.get("Content-Type") == "application/json":
                     global_data = await global_response.json()
+                else:
+                    _LOGGER.error(f"Expected JSON, but got {global_response.headers.get('Content-Type')}")
+                    global_data = {}
 
-                # Fetch coin API data
-                async with session.get(self.coin_api) as coin_response:
+            # Fetch coin API data
+            async with session.get(self.coin_api) as coin_response:
+                if coin_response.headers.get("Content-Type") == "application/json":
                     coin_data = await coin_response.json()
+                else:
+                    _LOGGER.error(f"Expected JSON, but got {coin_response.headers.get('Content-Type')}")
+                    coin_data = {}
 
+        # Only return data if it's valid
+        if local_data and global_data and coin_data:
             return {
                 "local_height": local_data.get("height"),
                 "global_height": global_data.get("height"),
                 "monero_price": coin_data.get("monero", {}).get("usd"),
             }
-        except Exception as e:
-            _LOGGER.error(f"Error fetching data: {e}")
+        else:
+            _LOGGER.error("Received incomplete data from APIs.")
             return {}
+
+    except Exception as e:
+        _LOGGER.error(f"Error fetching data: {e}")
+        return {}
 
 class MoneroSyncSensor(CoordinatorEntity, SensorEntity):
     """Sensor for sync percentage."""
@@ -103,6 +121,7 @@ class MoneroHeightSensor(CoordinatorEntity, SensorEntity):
             self._attr_unit_of_measurement = None
             self._attr_unique_id = f"{DOMAIN}_{key}"
 
+    
     @property
     def state(self):
         return self.coordinator.data.get(self.key)
