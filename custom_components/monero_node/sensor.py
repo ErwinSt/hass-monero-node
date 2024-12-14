@@ -1,139 +1,106 @@
 import requests
 from homeassistant.components.sensor import SensorEntity
+from homeassistant.const import PERCENTAGE, LENGTH_METERS, CURRENCY_DOLLAR
+from homeassistant.helpers.update_coordinator import CoordinatorEntity, DataUpdateCoordinator
+from datetime import timedelta
+import logging
+
 from .const import DOMAIN, CONF_LOCAL_API, CONF_GLOBAL_API, CONF_COIN_API
 
+_LOGGER = logging.getLogger(__name__)
+
+async def async_setup_platform(hass, config, async_add_entities, discovery_info=None):
+    """Legacy setup for Monero Node sensors."""
+    pass
+
 async def async_setup_entry(hass, config_entry, async_add_entities):
-    """Set up Monero Node sensors based on a config entry."""
+    """Set up Monero Node sensors based on configuration entry."""
     config = config_entry.data
 
     local_api = config.get(CONF_LOCAL_API)
     global_api = config.get(CONF_GLOBAL_API)
     coin_api = config.get(CONF_COIN_API)
 
-    name = config_entry.title or "Monero Node"
+    coordinator = MoneroNodeCoordinator(hass, local_api, global_api, coin_api)
 
+    # Create the sensors
     async_add_entities([
-        MoneroNodeMainSensor(name, local_api, global_api, coin_api),
-        MoneroNodeHeightSensor(name, local_api, "Local Height"),
-        MoneroNodeHeightSensor(name, global_api, "Global Height"),
-        MoneroPriceSensor(f"{name} Price", coin_api),
+        MoneroSyncSensor(coordinator),
+        MoneroHeightSensor(coordinator, "local_height", "Local Height"),
+        MoneroHeightSensor(coordinator, "global_height", "Global Height"),
+        MoneroPriceSensor(coordinator)
     ])
 
-class MoneroNodeMainSensor(SensorEntity):
-    """Main sensor aggregating sync percentage, heights, and price."""
+class MoneroNodeCoordinator(DataUpdateCoordinator):
+    """Coordinator to fetch data from the Monero Node APIs."""
 
-    def __init__(self, name, local_api, global_api, coin_api):
-        self._name = name
+    def __init__(self, hass, local_api, global_api, coin_api):
+        """Initialize the coordinator."""
+        super().__init__(
+            hass,
+            _LOGGER,
+            name="Monero Node",
+            update_interval=timedelta(seconds=30),
+        )
         self.local_api = local_api
         self.global_api = global_api
         self.coin_api = coin_api
-        self._state = None
-        self._attributes = {}
-        self._attr_unique_id = f"monero_main_{name.replace(' ', '_').lower()}"
-        self._attr_device_info = {
-            "identifiers": {(DOMAIN, name.replace(" ", "_").lower())},
-            "name": name,
-            "manufacturer": "Monero",
-            "model": "Node",
-        }
 
-    @property
-    def name(self):
-        return f"{self._name} Overview"
-
-    @property
-    def state(self):
-        return self._state
-
-    @property
-    def extra_state_attributes(self):
-        return self._attributes
-
-    def update(self):
+    async def _async_update_data(self):
+        """Fetch data from APIs."""
         try:
-            # Fetch local and global heights
             local_data = requests.get(self.local_api).json()
             global_data = requests.get(self.global_api).json()
             coin_data = requests.get(self.coin_api).json()
 
-            local_height = local_data.get("height")
-            global_height = global_data.get("height")
-            monero_price = coin_data.get("monero", {}).get("usd")
-
-            # Calculate sync percentage
-            sync_percentage = None
-            if local_height and global_height:
-                sync_percentage = round((local_height / global_height) * 100, 2)
-
-            # Update state and attributes
-            self._state = f"{sync_percentage}%" if sync_percentage else "N/A"
-            self._attributes = {
-                "local_height": local_height,
-                "global_height": global_height,
-                "sync_percentage": sync_percentage,
-                "monero_price_usd": f"${monero_price}" if monero_price else "N/A",
-                "hashrate": global_data.get("hashrate"),
-                "difficulty": global_data.get("difficulty"),
-                "last_reward": global_data.get("last_reward"),
+            return {
+                "local_height": local_data.get("height"),
+                "global_height": global_data.get("height"),
+                "monero_price": coin_data.get("monero", {}).get("usd"),
             }
         except Exception as e:
-            self._state = "Error"
-            self._attributes = {"error": str(e)}
+            _LOGGER.error(f"Error fetching data: {e}")
+            return {}
 
-class MoneroNodeHeightSensor(SensorEntity):
-    def __init__(self, name, api_url, height_type):
-        self._name = f"{name} {height_type.replace('_', ' ').title()}"
-        self.api_url = api_url
-        self.height_type = height_type
-        self._state = None
-        self._attr_unique_id = f"monero_{height_type}_{name.replace(' ', '_').lower()}"
-        self._attr_device_info = {
-            "identifiers": {(DOMAIN, name.replace(" ", "_").lower())},
-            "name": name,
-            "manufacturer": "Monero",
-            "model": "Node",
-        }
+class MoneroSyncSensor(CoordinatorEntity, SensorEntity):
+    """Sensor for sync percentage."""
 
-    @property
-    def name(self):
-        return self._name
+    def __init__(self, coordinator):
+        super().__init__(coordinator)
+        self._attr_name = "Monero Node Sync Percentage"
+        self._attr_unit_of_measurement = PERCENTAGE
+        self._attr_unique_id = f"{DOMAIN}_sync_percentage"
 
     @property
     def state(self):
-        return self._state
+        data = self.coordinator.data
+        if data.get("local_height") and data.get("global_height"):
+            return round((data["local_height"] / data["global_height"]) * 100, 2)
+        return None
 
-    def update(self):
-        try:
-            data = requests.get(self.api_url).json()
-            self._state = data.get("height")
-        except Exception as e:
-            logging.error(f"Erreur lors de l'actualisation du sensor : {str(e)}")
+class MoneroHeightSensor(CoordinatorEntity, SensorEntity):
+    """Sensor for heights (local or global)."""
 
-class MoneroPriceSensor(SensorEntity):
-    def __init__(self, name, coin_api):
-        self._name = name
-        self.coin_api = coin_api
-        self._state = None
-        self._attr_unique_id = f"monero_price_{name.replace(' ', '_').lower()}"
-        self._attr_device_info = {
-            "identifiers": {(DOMAIN, name.replace(" ", "_").lower())},
-            "name": name,
-            "manufacturer": "Monero",
-            "model": "Node",
-        }
-
-    @property
-    def name(self):
-        return self._name
+    def __init__(self, coordinator, key, name):
+        super().__init__(coordinator)
+        self.key = key
+        self._attr_name = name
+        self._attr_unit_of_measurement = LENGTH_METERS
+        self._attr_unique_id = f"{DOMAIN}_{key}"
 
     @property
     def state(self):
-        return self._state
+        return self.coordinator.data.get(self.key)
 
-    def update(self):
-        try:
-            data = requests.get(self.coin_api).json()
-            monero_price = data.get("monero", {}).get("usd")
-            self._state = f"${monero_price}" if monero_price else "N/A"
-        except Exception as e:
-            logging.error(f"Erreur lors de l'actualisation du sensor : {str(e)}")
+class MoneroPriceSensor(CoordinatorEntity, SensorEntity):
+    """Sensor for Monero price."""
+
+    def __init__(self, coordinator):
+        super().__init__(coordinator)
+        self._attr_name = "Monero Price"
+        self._attr_unit_of_measurement = CURRENCY_DOLLAR
+        self._attr_unique_id = f"{DOMAIN}_price"
+
+    @property
+    def state(self):
+        return self.coordinator.data.get("monero_price")

@@ -1,14 +1,17 @@
 {
-    "title": "Monero Node",
+  "title": "Monero Node",
+  "description": "Track the sync percentage and Monero price",
+  "config": {
     "step": {
       "user": {
         "title": "Configure Monero Node",
-        "description": "Enter the API URLs for your Monero Node.",
+        "description": "Enter the API endpoints.",
         "data": {
           "local_api": "Local API URL",
           "global_api": "Global API URL",
-          "coin_api": "Coin API URL (optional)"
+          "coin_api": "Coin API URL"
         }
       }
     }
   }
+}
