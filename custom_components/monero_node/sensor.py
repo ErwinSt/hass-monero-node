@@ -49,46 +49,46 @@ class MoneroNodeDataUpdateCoordinator(DataUpdateCoordinator):
         )
         self.config = config
 
-async def _async_update_data(self):
-    """Fetch data from API."""
-    try:
-        async with aiohttp.ClientSession() as session:
-            headers = {'User-Agent': 'HomeAssistant/MoneroNodeIntegration'}
-            
-            # Fetch global height with alternative parsing (using the new API)
-            async with session.get(self.config['global_height_url'], headers=headers) as response:
-                if response.status != 200:
-                    raise ValueError(f"Cannot connect to global height URL. Status code: {response.status}")
-                global_height_data = await response.json()
+    async def _async_update_data(self):
+        """Fetch data from API."""
+        try:
+            async with aiohttp.ClientSession() as session:
+                headers = {'User-Agent': 'HomeAssistant/MoneroNodeIntegration'}
 
-                # Extract the global height from the new API response
-                global_height = global_height_data.get('data', {}).get('best_block_height', 0)
+                # Fetch global height with alternative parsing
+                async with session.get(self.config['global_height_url'], headers=headers) as response:
+                    if response.status != 200:
+                        raise ValueError(f"Cannot connect to global height URL. Status code: {response.status}")
+                    global_height_data = await response.json()
 
-            # Fetch local height
-            async with session.get(self.config['local_height_url'], headers=headers) as response:
-                local_height_data = await response.json()
+                    # Extract the global height from the new API response
+                    global_height = global_height_data.get('data', {}).get('best_block_height', 0)
 
-            # Fetch Monero price
-            async with session.get(self.config['price_url'], headers=headers) as response:
-                price_data = await response.json()
+                # Fetch local height
+                async with session.get(self.config['local_height_url'], headers=headers) as response:
+                    local_height_data = await response.json()
 
-        data = {
-            'global_height': global_height,  # Use the new global height value
-            'local_height': local_height_data.get('height', 0),
-            'monero_price': price_data.get('monero', {}).get('usd', 0),
-        }
+                # Fetch Monero price
+                async with session.get(self.config['price_url'], headers=headers) as response:
+                    price_data = await response.json()
 
-        # Calculate node sync percentage
-        data['node_sync_percentage'] = (
-            (data['local_height'] / data['global_height']) * 100
-            if data['global_height'] > 0 else 0
-        )
+            data = {
+                'global_height': global_height,  # Use the new global height value
+                'local_height': local_height_data.get('height', 0),
+                'monero_price': price_data.get('monero', {}).get('usd', 0),
+            }
 
-        return data
+            # Calculate node sync percentage
+            data['node_sync_percentage'] = (
+                (data['local_height'] / data['global_height']) * 100
+                if data['global_height'] > 0 else 0
+            )
 
-    except Exception as err:
-        _LOGGER.error(f"Error fetching Monero Node data: {err}")
-        raise UpdateFailed(f"Error fetching Monero Node data: {err}") from err
+            return data
+
+        except Exception as err:
+            _LOGGER.error(f"Error fetching Monero Node data: {err}")
+            raise UpdateFailed(f"Error fetching Monero Node data: {err}") from err
 
 class MoneroNodeSensor(CoordinatorEntity, SensorEntity):
     """Monero Node Sensor class."""
