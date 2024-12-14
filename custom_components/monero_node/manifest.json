@@ -1,7 +1,7 @@
 {
     "domain": "monero_node",
     "name": "Monero Node",
-    "version": "1.0.3",
+    "version": "1.0.4",
     "documentation": "https://github.com/username/monero_node",
     "dependencies": [],
     "requirements": ["requests"],
