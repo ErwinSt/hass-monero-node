@@ -1,11 +1,17 @@
 {
-    "domain": "monero_node",
-    "name": "Monero Node",
-    "version": "1.0.7",
-    "documentation": "https://github.com/username/monero_node",
-    "dependencies": [],
-    "requirements": ["requests"],
-    "codeowners": ["@your_github_username"],
-    "iot_class": "local_polling",
-    "config_flow": true
-  }
+  "domain": "monero_node",
+  "name": "Monero Node Integration",
+  "version": "1.0.8",
+  "documentation": "https://github.com/yourusername/monero_node_integration",
+  "requirements": [
+      "aiohttp"
+  ],
+  "codeowners": [
+      "@yourusername"
+  ],
+  "config_flow": true,
+  "iot_class": "cloud_polling",
+  "platforms": [
+      "sensor"
+  ]
+}

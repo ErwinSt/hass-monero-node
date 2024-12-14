@@ -1,17 +1,20 @@
 {
-  "title": "Monero Node",
-  "description": "Track the sync percentage and Monero price",
   "config": {
-    "step": {
-      "user": {
-        "title": "Configure Monero Node",
-        "description": "Enter the API endpoints.",
-        "data": {
-          "local_api": "Local API URL",
-          "global_api": "Global API URL",
-          "coin_api": "Coin API URL"
-        }
+      "step": {
+          "user": {
+              "title": "Configure Monero Node",
+              "description": "Set up your Monero Node integration",
+              "data": {
+                  "global_height_url": "Global Height API URL",
+                  "local_height_url": "Local Height API URL",
+                  "price_url": "Monero Price API URL",
+                  "refresh_interval": "Refresh Interval (seconds)"
+              }
+          }
+      },
+      "error": {
+          "cannot_connect": "Cannot connect to the specified URLs",
+          "invalid_url": "Invalid URL format"
       }
-    }
   }
 }
