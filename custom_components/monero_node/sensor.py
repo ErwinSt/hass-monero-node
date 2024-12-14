@@ -10,18 +10,29 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
     global_api = config.get(CONF_GLOBAL_API)
     coin_api = config.get(CONF_COIN_API)
 
+    name = "Monero Node"
+
     async_add_entities([
-        MoneroNodeSyncSensor("Monero Node Sync", local_api, global_api),
-        MoneroPriceSensor("Monero Price", coin_api),
+        MoneroNodeSyncSensor(name, local_api, global_api),
+        MoneroNodeHeightSensor(name, local_api, "local_height"),
+        MoneroNodeHeightSensor(name, global_api, "global_height"),
+        MoneroPriceSensor(f"{name} Price", coin_api),
     ])
 
 class MoneroNodeSyncSensor(SensorEntity):
     def __init__(self, name, local_api, global_api):
-        self._name = name
+        self._name = f"{name} Sync Percentage"
         self._state = None
         self._attributes = {}
         self.local_api = local_api
         self.global_api = global_api
+        self._attr_unique_id = f"monero_sync_{name.replace(' ', '_').lower()}"
+        self._attr_device_info = {
+            "identifiers": {(DOMAIN, name.replace(" ", "_").lower())},
+            "name": name,
+            "manufacturer": "Monero",
+            "model": "Node",
+        }
 
     @property
     def name(self):
@@ -57,12 +68,48 @@ class MoneroNodeSyncSensor(SensorEntity):
             self._state = None
             self._attributes = {"error": str(e)}
 
+class MoneroNodeHeightSensor(SensorEntity):
+    def __init__(self, name, api_url, height_type):
+        self._name = f"{name} {height_type.replace('_', ' ').title()}"
+        self.api_url = api_url
+        self.height_type = height_type
+        self._state = None
+        self._attr_unique_id = f"monero_{height_type}_{name.replace(' ', '_').lower()}"
+        self._attr_device_info = {
+            "identifiers": {(DOMAIN, name.replace(" ", "_").lower())},
+            "name": name,
+            "manufacturer": "Monero",
+            "model": "Node",
+        }
+
+    @property
+    def name(self):
+        return self._name
+
+    @property
+    def state(self):
+        return self._state
+
+    def update(self):
+        try:
+            data = requests.get(self.api_url).json()
+            self._state = data.get("height")
+        except Exception as e:
+            self._state = None
+
 class MoneroPriceSensor(SensorEntity):
     def __init__(self, name, coin_api):
         self._name = name
         self._state = None
         self._attributes = {}
         self.coin_api = coin_api
+        self._attr_unique_id = f"monero_price_{name.replace(' ', '_').lower()}"
+        self._attr_device_info = {
+            "identifiers": {(DOMAIN, "monero_price")},
+            "name": "Monero Price",
+            "manufacturer": "Monero",
+            "model": "Coin Price",
+        }
 
     @property
     def name(self):
