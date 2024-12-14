@@ -48,7 +48,7 @@ class MoneroNodeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return self.async_show_form(
             step_id="user",
             data_schema=vol.Schema({
-                vol.Required('global_height_url', default='https://localmonero.co/blocks/api/get_stats'): str,
+                vol.Required('global_height_url', default='https://api.blockchair.com/monero/stats'): str,
                 vol.Required('local_height_url', default='http://localhost:18089/get_height'): str,
                 vol.Required('price_url', default='https://api.coingecko.com/api/v3/simple/price?ids=monero&vs_currencies=usd'): str,
                 vol.Required('refresh_interval', default=60): int,
@@ -62,6 +62,7 @@ class MoneroNodeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         session = async_create_clientsession(self.hass)
 
         try:
+            # Vérification de l'URL `global_height_url` (Blockchair)
             async with session.get(user_input['global_height_url'], headers={'User-Agent': 'HomeAssistant/MoneroNodeIntegration'}) as response:
                 if response.status != 200:
                     raise ValueError(f"Cannot connect to global height URL. Status code: {response.status}")
@@ -70,13 +71,21 @@ class MoneroNodeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     text = await response.text()
                     _LOGGER.error(f"Global height URL returned non-JSON. Content type: {content_type}, Content: {text[:500]}")
                     raise ValueError(f"Global height URL returned non-JSON content. Content type: {content_type}")
-                await response.json()
+                data = await response.json()
 
+                # Extraire la hauteur du bloc (block height) à partir de la réponse JSON
+                best_block_height = data.get('data', {}).get('best_block_height')
+                if not best_block_height:
+                    raise ValueError(f"Cannot find 'best_block_height' in the response.")
+                _LOGGER.info(f"Global height from Blockchair: {best_block_height}")
+
+            # Vérification de l'URL `local_height_url`
             async with session.get(user_input['local_height_url'], headers={'User-Agent': 'HomeAssistant/MoneroNodeIntegration'}) as response:
                 if response.status != 200:
                     raise ValueError(f"Cannot connect to local height URL. Status code: {response.status}")
                 await response.json()
 
+            # Vérification de l'URL `price_url`
             async with session.get(user_input['price_url'], headers={'User-Agent': 'HomeAssistant/MoneroNodeIntegration'}) as response:
                 if response.status != 200:
                     raise ValueError(f"Cannot connect to price URL. Status code: {response.status}")
