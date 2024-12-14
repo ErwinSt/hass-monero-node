@@ -5,6 +5,7 @@ from homeassistant.const import PERCENTAGE, LENGTH_METERS, CURRENCY_DOLLAR
 from homeassistant.helpers.update_coordinator import CoordinatorEntity, DataUpdateCoordinator
 from datetime import timedelta
 import logging
+import requests
 
 from .const import DOMAIN, CONF_LOCAL_API, CONF_GLOBAL_API, CONF_COIN_API
 
@@ -87,9 +88,14 @@ class MoneroHeightSensor(CoordinatorEntity, SensorEntity):
     def __init__(self, coordinator, key, name):
         super().__init__(coordinator)
         self.key = key
-        self._attr_name = name
-        self._attr_unit_of_measurement = LENGTH_METERS
-        self._attr_unique_id = f"{DOMAIN}_{key}"
+        if key == "global_height":
+            self._attr_name = name
+            self._attr_unit_of_measurement = LENGTH_METERS
+            self._attr_unique_id = f"{DOMAIN}_{key}"
+        else:
+            self._attr_name = name
+            self._attr_unit_of_measurement = None
+            self._attr_unique_id = f"{DOMAIN}_{key}"
 
     @property
     def state(self):
