@@ -1,0 +1,14 @@
+{
+    "title": "Monero Node",
+    "step": {
+      "user": {
+        "title": "Configure Monero Node",
+        "description": "Enter the API URLs for your Monero Node.",
+        "data": {
+          "local_api": "Local API URL",
+          "global_api": "Global API URL",
+          "coin_api": "Coin API URL (optional)"
+        }
+      }
+    }
+  }
