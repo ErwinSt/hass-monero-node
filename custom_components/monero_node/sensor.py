@@ -107,20 +107,19 @@ class MoneroNodeHeightSensor(SensorEntity):
             data = requests.get(self.api_url).json()
             self._state = data.get("height")
         except Exception as e:
-            self._state = None
+            logging.error(f"Erreur lors de l'actualisation du sensor : {str(e)}")
 
 class MoneroPriceSensor(SensorEntity):
     def __init__(self, name, coin_api):
         self._name = name
-        self._state = None
-        self._attributes = {}
         self.coin_api = coin_api
+        self._state = None
         self._attr_unique_id = f"monero_price_{name.replace(' ', '_').lower()}"
         self._attr_device_info = {
-            "identifiers": {(DOMAIN, "monero_price")},
-            "name": "Monero Price",
+            "identifiers": {(DOMAIN, name.replace(" ", "_").lower())},
+            "name": name,
             "manufacturer": "Monero",
-            "model": "Coin Price",
+            "model": "Node",
         }
 
     @property
@@ -131,15 +130,10 @@ class MoneroPriceSensor(SensorEntity):
     def state(self):
         return self._state
 
-    @property
-    def extra_state_attributes(self):
-        return self._attributes
-
     def update(self):
         try:
-            coin_data = requests.get(self.coin_api).json()
-            self._state = coin_data["monero"]["usd"]
-            self._attributes = {"currency": "USD"}
+            data = requests.get(self.coin_api).json()
+            monero_price = data.get("monero", {}).get("usd")
+            self._state = f"${monero_price}" if monero_price else "N/A"
         except Exception as e:
-            self._state = None
-            self._attributes = {"error": str(e)}
+            logging.error(f"Erreur lors de l'actualisation du sensor : {str(e)}")
