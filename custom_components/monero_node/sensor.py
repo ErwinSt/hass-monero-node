@@ -13,7 +13,10 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
     name = config_entry.title or "Monero Node"
 
     async_add_entities([
-        MoneroNodeMainSensor(name, local_api, global_api, coin_api),
+        MoneroNodeSyncSensor(name, local_api, global_api),
+        MoneroNodeHeightSensor(name, local_api, "Local Height"),
+        MoneroNodeHeightSensor(name, global_api, "Global Height"),
+        MoneroPriceSensor(f"{name} Price", coin_api),
     ])
 
 class MoneroNodeMainSensor(SensorEntity):
