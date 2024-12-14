@@ -1,9 +1,8 @@
 {
-    "name": "Monero Node Integration",
-    "content_in_root": false,
-    "zip_release": false,
-    "homeassistant": "2023.10.0",
-    "hacs": "1.0.8",
-    "persistent_directory": "data",
-    "country": "FR"
-  }
+  "name": "Monero Node Integration",
+  "content_in_root": false,
+  "zip_release": false,
+  "homeassistant": "2023.10.0",
+  "hacs": "1.0.8",
+  "persistent_directory": "data"
+}
