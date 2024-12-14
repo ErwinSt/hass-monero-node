@@ -53,17 +53,28 @@ class MoneroNodeDataUpdateCoordinator(DataUpdateCoordinator):
         """Fetch data from API."""
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.get(self.config['global_height_url']) as response:
-                    global_height_data = await response.json()
+                headers = {'User-Agent': 'HomeAssistant/MoneroNodeIntegration'}
+                
+                # Fetch global height with alternative parsing
+                async with session.get(self.config['global_height_url'], headers=headers) as response:
+                    global_height_text = await response.text()
+                    try:
+                        global_height_data = await response.json()
+                    except aiohttp.ContentTypeError:
+                        # If JSON parsing fails, try custom parsing
+                        import json
+                        global_height_data = json.loads(global_height_text.strip())
 
-                async with session.get(self.config['local_height_url']) as response:
+                async with session.get(self.config['local_height_url'], headers=headers) as response:
                     local_height_data = await response.json()
 
-                async with session.get(self.config['price_url']) as response:
+                async with session.get(self.config['price_url'], headers=headers) as response:
                     price_data = await response.json()
 
             data = {
-                'global_height': global_height_data.get('height', 0),
+                'global_height': global_height_data.get('height') or 
+                               global_height_data.get('blockchainHeight') or 
+                               global_height_data.get('blockchain_height') or 0,
                 'local_height': local_height_data.get('height', 0),
                 'monero_price': price_data.get('monero', {}).get('usd', 0),
             }
@@ -76,6 +87,7 @@ class MoneroNodeDataUpdateCoordinator(DataUpdateCoordinator):
             return data
 
         except Exception as err:
+            _LOGGER.error(f"Error fetching Monero Node data: {err}")
             raise UpdateFailed(f"Error fetching Monero Node data: {err}") from err
 
 class MoneroNodeSensor(CoordinatorEntity, SensorEntity):

@@ -62,24 +62,29 @@ class MoneroNodeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         session = async_create_clientsession(self.hass)
 
         try:
-            async with session.get(user_input['global_height_url']) as response:
+            async with session.get(user_input['global_height_url'], headers={'User-Agent': 'HomeAssistant/MoneroNodeIntegration'}) as response:
                 if response.status != 200:
-                    raise ValueError("Cannot connect to global height URL")
+                    raise ValueError(f"Cannot connect to global height URL. Status code: {response.status}")
+                content_type = response.headers.get('Content-Type', '')
+                if 'application/json' not in content_type:
+                    text = await response.text()
+                    _LOGGER.error(f"Global height URL returned non-JSON. Content type: {content_type}, Content: {text[:500]}")
+                    raise ValueError(f"Global height URL returned non-JSON content. Content type: {content_type}")
                 await response.json()
 
-            async with session.get(user_input['local_height_url']) as response:
+            async with session.get(user_input['local_height_url'], headers={'User-Agent': 'HomeAssistant/MoneroNodeIntegration'}) as response:
                 if response.status != 200:
-                    raise ValueError("Cannot connect to local height URL")
+                    raise ValueError(f"Cannot connect to local height URL. Status code: {response.status}")
                 await response.json()
 
-            async with session.get(user_input['price_url']) as response:
+            async with session.get(user_input['price_url'], headers={'User-Agent': 'HomeAssistant/MoneroNodeIntegration'}) as response:
                 if response.status != 200:
-                    raise ValueError("Cannot connect to price URL")
+                    raise ValueError(f"Cannot connect to price URL. Status code: {response.status}")
                 await response.json()
 
         except (aiohttp.ClientError, ValueError, KeyError) as err:
             _LOGGER.error(f"Validation error: {err}")
-            raise ValueError("Invalid URLs or cannot connect to APIs") from err
+            raise ValueError(f"Invalid URLs or cannot connect to APIs: {err}") from err
 
 async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEntry) -> bool:
     """Set up Monero Node from a config entry."""
