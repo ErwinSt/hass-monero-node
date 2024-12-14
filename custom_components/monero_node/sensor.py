@@ -1,4 +1,5 @@
-import requests
+import aiohttp
+import asyncio
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.const import PERCENTAGE, LENGTH_METERS, CURRENCY_DOLLAR
 from homeassistant.helpers.update_coordinator import CoordinatorEntity, DataUpdateCoordinator
@@ -49,7 +50,9 @@ class MoneroNodeCoordinator(DataUpdateCoordinator):
     async def _async_update_data(self):
         """Fetch data from APIs."""
         try:
-            local_data = requests.get(self.local_api).json()
+            async with aiohttp.ClientSession() as session:
+                async with session.get(self.local_api) as response:
+                    local_data = await response.json()
             global_data = requests.get(self.global_api).json()
             coin_data = requests.get(self.coin_api).json()
 
