@@ -36,6 +36,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
 
     async_add_entities(sensors)
 
+
 class MoneroNodeDataUpdateCoordinator(DataUpdateCoordinator):
     """Class to manage fetching Monero Node data from API."""
 
