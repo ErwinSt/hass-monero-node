@@ -27,22 +27,25 @@ class MoneroNodeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     def async_get_options_flow(config_entry):
         return MoneroNodeOptionsFlowHandler(config_entry)
 
-class MoneroNodeOptionsFlowHandler(config_entries.OptionsFlow):
-    """Handle options flow for Monero Node."""
+class MoneroOptionsFlowHandler(config_entries.OptionsFlow):
+    """Handle options for the Monero integration."""
 
     def __init__(self, config_entry):
         self.config_entry = config_entry
 
     async def async_step_init(self, user_input=None):
-        """Handle options configuration."""
+        """Manage the options."""
         if user_input is not None:
             return self.async_create_entry(title="", data=user_input)
 
+        current_data = self.config_entry.options
         return self.async_show_form(
             step_id="init",
             data_schema=vol.Schema({
-                vol.Required(CONF_LOCAL_API, default=self.config_entry.data[CONF_LOCAL_API]): str,
-                vol.Required(CONF_GLOBAL_API, default=self.config_entry.data[CONF_GLOBAL_API]): str,
-                vol.Optional(CONF_COIN_API, default=self.config_entry.data[CONF_COIN_API]): str,
+                vol.Optional("name", default=current_data.get("name", "Monero Node")): str,
+                vol.Optional(CONF_LOCAL_API, default=current_data.get(CONF_LOCAL_API, "http://IP:18089/get_height")): str,
+                vol.Optional(CONF_GLOBAL_API, default=current_data.get(CONF_GLOBAL_API, "")): str,
+                vol.Optional(CONF_COIN_API, default=current_data.get(CONF_COIN_API, "")): str,
+                vol.Optional("refresh_interval", default=current_data.get("refresh_interval", 60)): int,
             })
         )

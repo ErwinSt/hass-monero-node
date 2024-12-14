@@ -10,23 +10,23 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
     global_api = config.get(CONF_GLOBAL_API)
     coin_api = config.get(CONF_COIN_API)
 
-    name = "Monero Node"
+    name = config_entry.title or "Monero Node"
 
     async_add_entities([
-        MoneroNodeSyncSensor(name, local_api, global_api),
-        MoneroNodeHeightSensor(name, local_api, "local_height"),
-        MoneroNodeHeightSensor(name, global_api, "global_height"),
-        MoneroPriceSensor(f"{name} Price", coin_api),
+        MoneroNodeMainSensor(name, local_api, global_api, coin_api),
     ])
 
-class MoneroNodeSyncSensor(SensorEntity):
-    def __init__(self, name, local_api, global_api):
-        self._name = f"{name} Sync Percentage"
-        self._state = None
-        self._attributes = {}
+class MoneroNodeMainSensor(SensorEntity):
+    """Main sensor aggregating sync percentage, heights, and price."""
+
+    def __init__(self, name, local_api, global_api, coin_api):
+        self._name = name
         self.local_api = local_api
         self.global_api = global_api
-        self._attr_unique_id = f"monero_sync_{name.replace(' ', '_').lower()}"
+        self.coin_api = coin_api
+        self._state = None
+        self._attributes = {}
+        self._attr_unique_id = f"monero_main_{name.replace(' ', '_').lower()}"
         self._attr_device_info = {
             "identifiers": {(DOMAIN, name.replace(" ", "_").lower())},
             "name": name,
@@ -36,7 +36,7 @@ class MoneroNodeSyncSensor(SensorEntity):
 
     @property
     def name(self):
-        return self._name
+        return f"{self._name} Overview"
 
     @property
     def state(self):
@@ -48,24 +48,33 @@ class MoneroNodeSyncSensor(SensorEntity):
 
     def update(self):
         try:
+            # Fetch local and global heights
             local_data = requests.get(self.local_api).json()
             global_data = requests.get(self.global_api).json()
+            coin_data = requests.get(self.coin_api).json()
 
             local_height = local_data.get("height")
             global_height = global_data.get("height")
+            monero_price = coin_data.get("monero", {}).get("usd")
 
+            # Calculate sync percentage
+            sync_percentage = None
             if local_height and global_height:
-                self._state = round((local_height / global_height) * 100, 2)
+                sync_percentage = round((local_height / global_height) * 100, 2)
 
+            # Update state and attributes
+            self._state = f"{sync_percentage}%" if sync_percentage else "N/A"
             self._attributes = {
                 "local_height": local_height,
                 "global_height": global_height,
+                "sync_percentage": sync_percentage,
+                "monero_price_usd": f"${monero_price}" if monero_price else "N/A",
                 "hashrate": global_data.get("hashrate"),
                 "difficulty": global_data.get("difficulty"),
                 "last_reward": global_data.get("last_reward"),
             }
         except Exception as e:
-            self._state = None
+            self._state = "Error"
             self._attributes = {"error": str(e)}
 
 class MoneroNodeHeightSensor(SensorEntity):
