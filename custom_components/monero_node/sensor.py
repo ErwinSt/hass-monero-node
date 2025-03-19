@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 import aiohttp
 from homeassistant.components.sensor import (
@@ -114,6 +114,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
             None,
             "blocks/min"
         ),
+        MoneroNodeSensor(
+            coordinator, 
+            config, 
+            "sync_eta", 
+            "Sync ETA", 
+            "mdi:calendar-clock",
+            SensorStateClass.MEASUREMENT,
+            None,
+            None,
+            None
+        ),
     ]
 
     async_add_entities(sensors)
@@ -212,6 +223,7 @@ class MoneroNodeDataUpdateCoordinator(DataUpdateCoordinator):
             # Calculate sync speed and remaining time
             sync_speed = None
             remaining_sync_time = None
+            sync_eta = None
             
             if self._prev_local_height is not None and self._prev_update_time is not None:
                 # Calculate blocks per second
@@ -228,6 +240,21 @@ class MoneroNodeDataUpdateCoordinator(DataUpdateCoordinator):
                         
                         # Store raw seconds for proper device class usage
                         remaining_sync_time = int(remaining_seconds)
+                        
+                        # Calculer la date et l'heure estimées de fin de synchronisation
+                        if remaining_sync_time > 0:
+                            eta_datetime = datetime.now() + timedelta(seconds=remaining_sync_time)
+                            
+                            # Formater l'ETA en fonction du temps restant
+                            if remaining_sync_time < 3600:  # Moins d'une heure
+                                minutes_left = remaining_sync_time // 60
+                                sync_eta = f"{minutes_left} minutes ({eta_datetime.strftime('%H:%M')})"
+                            elif remaining_sync_time < 86400:  # Moins d'un jour
+                                hours_left = remaining_sync_time // 3600
+                                sync_eta = f"{hours_left} heures ({eta_datetime.strftime('%H:%M le %d/%m')})"
+                            else:  # Plus d'un jour
+                                days_left = remaining_sync_time // 86400
+                                sync_eta = f"{days_left} jours ({eta_datetime.strftime('%d/%m/%Y')})"
             
             # Update previous values for next calculation
             self._prev_local_height = current_local_height
@@ -235,6 +262,7 @@ class MoneroNodeDataUpdateCoordinator(DataUpdateCoordinator):
             
             data['remaining_sync_time'] = remaining_sync_time
             data['sync_speed'] = sync_speed if sync_speed is not None else 0
+            data['sync_eta'] = sync_eta
 
             return data
 
@@ -283,7 +311,7 @@ class MoneroNodeSensor(CoordinatorEntity, SensorEntity):
     @property
     def extra_state_attributes(self):
         """Return additional attributes."""
-        if self._type in ["node_sync_percentage", "remaining_sync_time", "local_height"]:
+        if self._type in ["node_sync_percentage", "remaining_sync_time", "local_height", "sync_eta"]:
             return {
                 ATTR_SYNC_STATUS: self.coordinator.data.get(ATTR_SYNC_STATUS),
                 ATTR_BLOCKS_BEHIND: self.coordinator.data.get("blocks_behind")
