@@ -32,6 +32,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
         MoneroNodeSensor(coordinator, config, "local_height", "Local Height", "mdi:counter"),
         MoneroNodeSensor(coordinator, config, "monero_price", "Monero Price", "mdi:currency-usd"),
         MoneroNodeSensor(coordinator, config, "node_sync_percentage", "Node Sync Percentage", "mdi:sync"),
+        MoneroNodeSensor(coordinator, config, "remaining_sync_time", "Remaining Sync Time", "mdi:clock-outline"),
     ]
 
     async_add_entities(sensors)
@@ -49,10 +50,13 @@ class MoneroNodeDataUpdateCoordinator(DataUpdateCoordinator):
             update_interval=timedelta(seconds=config.get('refresh_interval', 60))  # Intervalle de mise à jour
         )
         self.config = config
+        self._prev_local_height = None
+        self._prev_update_time = None
 
     async def _async_update_data(self):
         """Fetch data from API."""
         try:
+            current_time = self.hass.loop.time()
             async with aiohttp.ClientSession() as session:
                 headers = {'User-Agent': 'HomeAssistant/MoneroNodeIntegration'}
 
@@ -76,9 +80,11 @@ class MoneroNodeDataUpdateCoordinator(DataUpdateCoordinator):
                         raise ValueError(f"Cannot connect to price URL. Status code: {response.status}")
                     price_data = await response.json()
 
+            current_local_height = local_height_data.get('height', 0)
+            
             data = {
                 'global_height': global_height,
-                'local_height': local_height_data.get('height', 0),
+                'local_height': current_local_height,
                 'monero_price': price_data.get('monero', {}).get('usd', 0),
             }
 
@@ -87,6 +93,40 @@ class MoneroNodeDataUpdateCoordinator(DataUpdateCoordinator):
                 (data['local_height'] / data['global_height']) * 100
                 if data['global_height'] > 0 else 0
             )
+            
+            # Calculate remaining sync time estimation
+            remaining_sync_time = None
+            if self._prev_local_height is not None and self._prev_update_time is not None:
+                # Calculate blocks per second
+                time_diff = current_time - self._prev_update_time
+                blocks_diff = current_local_height - self._prev_local_height
+                
+                if time_diff > 0 and blocks_diff > 0:
+                    blocks_per_second = blocks_diff / time_diff
+                    remaining_blocks = global_height - current_local_height
+                    
+                    if blocks_per_second > 0:
+                        remaining_seconds = remaining_blocks / blocks_per_second
+                        
+                        # Format the remaining time
+                        if remaining_seconds < 60:
+                            remaining_sync_time = f"{int(remaining_seconds)} seconds"
+                        elif remaining_seconds < 3600:
+                            remaining_sync_time = f"{int(remaining_seconds / 60)} minutes"
+                        elif remaining_seconds < 86400:
+                            hours = int(remaining_seconds / 3600)
+                            minutes = int((remaining_seconds % 3600) / 60)
+                            remaining_sync_time = f"{hours} hours {minutes} minutes"
+                        else:
+                            days = int(remaining_seconds / 86400)
+                            hours = int((remaining_seconds % 86400) / 3600)
+                            remaining_sync_time = f"{days} days {hours} hours"
+            
+            # Update previous values for next calculation
+            self._prev_local_height = current_local_height
+            self._prev_update_time = current_time
+            
+            data['remaining_sync_time'] = remaining_sync_time if remaining_sync_time else "Calculating..."
 
             return data
 
@@ -126,6 +166,6 @@ class MoneroNodeSensor(CoordinatorEntity, SensorEntity):
     @property
     def state_class(self):
         """Return the state class."""
-        if self._type == "node_sync_percentage":
+        if self._type in ["node_sync_percentage"]:
             return SensorStateClass.TOTAL
         return SensorStateClass.MEASUREMENT
