@@ -6,8 +6,17 @@ import logging
 from datetime import timedelta
 
 import aiohttp
-from homeassistant.components.sensor import SensorEntity, SensorStateClass
+from homeassistant.components.sensor import (
+    SensorEntity, 
+    SensorStateClass,
+    SensorDeviceClass,
+)
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import (
+    PERCENTAGE,
+    UnitOfTime,
+    UnitOfInformation,
+)
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceEntryType
 from homeassistant.helpers.entity import DeviceInfo
@@ -17,7 +26,7 @@ from homeassistant.helpers.update_coordinator import (
     UpdateFailed,
 )
 
-from .const import DOMAIN
+from .const import DOMAIN, ATTR_SYNC_STATUS, ATTR_BLOCKS_BEHIND
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -28,11 +37,83 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
     await coordinator.async_config_entry_first_refresh()
 
     sensors = [
-        MoneroNodeSensor(coordinator, config, "global_height", "Global Height", "mdi:counter"),
-        MoneroNodeSensor(coordinator, config, "local_height", "Local Height", "mdi:counter"),
-        MoneroNodeSensor(coordinator, config, "monero_price", "Monero Price", "mdi:currency-usd"),
-        MoneroNodeSensor(coordinator, config, "node_sync_percentage", "Node Sync Percentage", "mdi:sync"),
-        MoneroNodeSensor(coordinator, config, "remaining_sync_time", "Remaining Sync Time", "mdi:clock-outline"),
+        MoneroNodeSensor(
+            coordinator, 
+            config, 
+            "global_height", 
+            "Global Height", 
+            "mdi:globe-model",
+            SensorStateClass.MEASUREMENT,
+            None,
+            None,
+            "blocks"
+        ),
+        MoneroNodeSensor(
+            coordinator, 
+            config, 
+            "local_height", 
+            "Local Height", 
+            "mdi:database",
+            SensorStateClass.MEASUREMENT,
+            None,
+            None,
+            "blocks"
+        ),
+        MoneroNodeSensor(
+            coordinator, 
+            config, 
+            "monero_price", 
+            "Monero Price", 
+            "mdi:currency-usd",
+            SensorStateClass.MEASUREMENT,
+            SensorDeviceClass.MONETARY,
+            None,
+            "USD"
+        ),
+        MoneroNodeSensor(
+            coordinator, 
+            config, 
+            "node_sync_percentage", 
+            "Node Sync Percentage", 
+            "mdi:sync",
+            SensorStateClass.MEASUREMENT,
+            None,
+            None,
+            PERCENTAGE
+        ),
+        MoneroNodeSensor(
+            coordinator, 
+            config, 
+            "blocks_behind", 
+            "Blocks Behind", 
+            "mdi:alert-circle-outline",
+            SensorStateClass.MEASUREMENT,
+            None,
+            None,
+            "blocks"
+        ),
+        MoneroNodeSensor(
+            coordinator, 
+            config, 
+            "remaining_sync_time", 
+            "Remaining Sync Time", 
+            "mdi:clock-outline",
+            SensorStateClass.MEASUREMENT, 
+            SensorDeviceClass.DURATION,
+            None,
+            None
+        ),
+        MoneroNodeSensor(
+            coordinator, 
+            config, 
+            "sync_speed", 
+            "Sync Speed", 
+            "mdi:speedometer",
+            SensorStateClass.MEASUREMENT,
+            None,
+            None,
+            "blocks/min"
+        ),
     ]
 
     async_add_entities(sensors)
@@ -47,98 +128,132 @@ class MoneroNodeDataUpdateCoordinator(DataUpdateCoordinator):
             hass,
             _LOGGER,
             name=DOMAIN,
-            update_interval=timedelta(seconds=config.get('refresh_interval', 60))  # Intervalle de mise à jour
+            update_interval=timedelta(seconds=config.get('refresh_interval', 60))
         )
         self.config = config
         self._prev_local_height = None
         self._prev_update_time = None
+        self._session = None
 
     async def _async_update_data(self):
         """Fetch data from API."""
         try:
             current_time = self.hass.loop.time()
-            async with aiohttp.ClientSession() as session:
-                headers = {'User-Agent': 'HomeAssistant/MoneroNodeIntegration'}
+            
+            if self._session is None:
+                self._session = aiohttp.ClientSession()
+                
+            headers = {'User-Agent': 'HomeAssistant/MoneroNodeIntegration'}
 
+            try:
                 # Fetch global height from the Monero Node API
-                async with session.get(self.config['global_height_url'], headers=headers) as response:
+                async with self._session.get(
+                    self.config['global_height_url'], 
+                    headers=headers,
+                    timeout=10
+                ) as response:
                     if response.status != 200:
                         raise ValueError(f"Cannot connect to global height URL. Status code: {response.status}")
                     global_height_data = await response.json()
-
                     global_height = global_height_data.get('data', {}).get('best_block_height', 0)
 
                 # Fetch local height
-                async with session.get(self.config['local_height_url'], headers=headers) as response:
+                async with self._session.get(
+                    self.config['local_height_url'], 
+                    headers=headers,
+                    timeout=5
+                ) as response:
                     if response.status != 200:
                         raise ValueError(f"Cannot connect to local height URL. Status code: {response.status}")
                     local_height_data = await response.json()
 
                 # Fetch Monero price
-                async with session.get(self.config['price_url'], headers=headers) as response:
+                async with self._session.get(
+                    self.config['price_url'], 
+                    headers=headers,
+                    timeout=10
+                ) as response:
                     if response.status != 200:
                         raise ValueError(f"Cannot connect to price URL. Status code: {response.status}")
                     price_data = await response.json()
+            except (asyncio.TimeoutError, aiohttp.ClientError) as err:
+                _LOGGER.error(f"Connection error: {err}")
+                raise UpdateFailed(f"Connection error: {err}")
 
             current_local_height = local_height_data.get('height', 0)
+            blocks_behind = max(0, global_height - current_local_height)
+            
+            # Determine sync status
+            if blocks_behind == 0:
+                sync_status = "Synchronized"
+            elif blocks_behind <= 10:
+                sync_status = "Almost Synchronized"
+            elif blocks_behind <= 100:
+                sync_status = "Close to Synchronized"
+            elif blocks_behind <= 1000:
+                sync_status = "Synchronizing"
+            else:
+                sync_status = "Syncing (Far Behind)"
             
             data = {
                 'global_height': global_height,
                 'local_height': current_local_height,
+                'blocks_behind': blocks_behind,
                 'monero_price': price_data.get('monero', {}).get('usd', 0),
+                ATTR_SYNC_STATUS: sync_status,
             }
 
             # Calculate node sync percentage
-            data['node_sync_percentage'] = (
+            data['node_sync_percentage'] = round(
                 (data['local_height'] / data['global_height']) * 100
-                if data['global_height'] > 0 else 0
+                if data['global_height'] > 0 else 0, 2
             )
             
-            # Calculate remaining sync time estimation
+            # Calculate sync speed and remaining time
+            sync_speed = None
             remaining_sync_time = None
+            
             if self._prev_local_height is not None and self._prev_update_time is not None:
                 # Calculate blocks per second
                 time_diff = current_time - self._prev_update_time
                 blocks_diff = current_local_height - self._prev_local_height
                 
-                if time_diff > 0 and blocks_diff > 0:
+                if time_diff > 0:
                     blocks_per_second = blocks_diff / time_diff
-                    remaining_blocks = global_height - current_local_height
+                    blocks_per_minute = blocks_per_second * 60
+                    sync_speed = round(blocks_per_minute, 2)
                     
-                    if blocks_per_second > 0:
-                        remaining_seconds = remaining_blocks / blocks_per_second
+                    if blocks_per_second > 0 and blocks_behind > 0:
+                        remaining_seconds = blocks_behind / blocks_per_second
                         
-                        # Format the remaining time
-                        if remaining_seconds < 60:
-                            remaining_sync_time = f"{int(remaining_seconds)} seconds"
-                        elif remaining_seconds < 3600:
-                            remaining_sync_time = f"{int(remaining_seconds / 60)} minutes"
-                        elif remaining_seconds < 86400:
-                            hours = int(remaining_seconds / 3600)
-                            minutes = int((remaining_seconds % 3600) / 60)
-                            remaining_sync_time = f"{hours} hours {minutes} minutes"
-                        else:
-                            days = int(remaining_seconds / 86400)
-                            hours = int((remaining_seconds % 86400) / 3600)
-                            remaining_sync_time = f"{days} days {hours} hours"
+                        # Store raw seconds for proper device class usage
+                        remaining_sync_time = int(remaining_seconds)
             
             # Update previous values for next calculation
             self._prev_local_height = current_local_height
             self._prev_update_time = current_time
             
-            data['remaining_sync_time'] = remaining_sync_time if remaining_sync_time else "Calculating..."
+            data['remaining_sync_time'] = remaining_sync_time
+            data['sync_speed'] = sync_speed if sync_speed is not None else 0
 
             return data
 
         except Exception as err:
             _LOGGER.error(f"Error fetching Monero Node data: {err}")
-            raise UpdateFailed(f"Error fetching Monero Node data: {err}") from err
+            raise UpdateFailed(f"Error fetching Monero Node data: {err}")
+    
+    async def async_shutdown(self):
+        """Close open client session."""
+        if self._session:
+            await self._session.close()
+            self._session = None
 
 
 class MoneroNodeSensor(CoordinatorEntity, SensorEntity):
     """Monero Node Sensor class."""
 
-    def __init__(self, coordinator, config, sensor_type, name, icon):
+    def __init__(self, coordinator, config, sensor_type, name, icon, 
+                 state_class, device_class, suggested_display_precision, unit):
         """Initialize the sensor."""
         super().__init__(coordinator)
         self._config = config
@@ -146,26 +261,31 @@ class MoneroNodeSensor(CoordinatorEntity, SensorEntity):
         self._attr_name = f"Monero Node {name}"
         self._attr_icon = icon
         self._attr_unique_id = f"{DOMAIN}_{config['entry_id']}_{sensor_type}"
+        self._attr_state_class = state_class
+        self._attr_device_class = device_class
+        self._attr_suggested_display_precision = suggested_display_precision
+        self._attr_native_unit_of_measurement = unit
+        
         self._attr_device_info = DeviceInfo(
             entry_type=DeviceEntryType.SERVICE,
             identifiers={(DOMAIN, config['entry_id'])},
             manufacturer="Monero",
-            name=f"Monero Node {config['entry_id']}",
+            name=f"Monero Node {config.get('name', 'Default')}",
+            model="XMR Node",
+            sw_version=f"v{coordinator.config.get('monerod_version', 'Unknown')}",
         )
 
     @property
-    def state(self):
+    def native_value(self):
         """Return the state of the sensor."""
         return self.coordinator.data.get(self._type)
-
+        
     @property
-    def device_class(self):
-        """Return the device class."""
-        return "monetary" if self._type == "monero_price" else None
-
-    @property
-    def state_class(self):
-        """Return the state class."""
-        if self._type in ["node_sync_percentage"]:
-            return SensorStateClass.TOTAL
-        return SensorStateClass.MEASUREMENT
+    def extra_state_attributes(self):
+        """Return additional attributes."""
+        if self._type in ["node_sync_percentage", "remaining_sync_time", "local_height"]:
+            return {
+                ATTR_SYNC_STATUS: self.coordinator.data.get(ATTR_SYNC_STATUS),
+                ATTR_BLOCKS_BEHIND: self.coordinator.data.get("blocks_behind")
+            }
+        return None
